@@ -63,12 +63,11 @@ class Guard(Operations):
         if len(path_parts) == 0:
             ok = True
         else:
-            if path_parts[0] in symlinks:
-               ok = True
-            elif not( path_parts[0] in Helper.return_main_entries()):
-               pass
-            else:
-                ok = True
+            ok = True
+            if not( path_parts[0] in Helper.return_main_entries()):
+               ok = False
+            if len(path_parts) > 1 and (not path_parts[0] in symlinks or not(path_parts[1] in symlinks[path_parts[0]])):
+               ok = False
         if ok:
           return {'st_atime': int(time()), 'st_ctime': int(time()), 'st_gid': 0, 'st_mode': (stat.S_IFDIR | 0o755), 'st_mtime': int(time()), 'st_uid': 0}
         else:
