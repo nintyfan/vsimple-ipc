@@ -4,7 +4,7 @@ import signal
 import stat, os
 
 
-from errno import ENOENT
+from errno import ENOENT, EACCES
 
 from fuse import FUSE, FuseOSError, Operations, fuse_get_context
 from time import time
@@ -26,11 +26,50 @@ class Helper:
         dirents2 = os.listdir('/proc')
         for r in dirents2:
           try:
-            int(r)
-            output.append(r + '-' + str(os.stat('/proc/' + r).st_ctime))
+            output.append(r + '-' + str(Helper.get_creation_time(int(r))))
           except ValueError:
             output.append(r)
         return output
+    def get_creation_time(pid):
+         pstat = open('/proc/' + str(pid) + '/stat', 'r')
+         line = pstat.readlines()[0]
+         return line.split(' ')[23]
+    def remove_white(string):
+        result = ''
+        was_space=False
+        for a in range(0,len(string)-1):
+            if string[a].isspace():
+                if not(was_space):
+                    result += string[a]
+                was_space = True
+            else:
+                was_space = False
+                result += string[a]
+        return result
+                
+    def get_process_rights(pid):
+         uid = None
+         gid = None
+         
+         pstat = open('/proc/' + str(pid) + '/status', 'r')
+         lines = pstat.readlines()
+         for a in lines:
+              if a.startswith('Uid:'):
+                  a = Helper.remove_white(a)
+                  print(a)
+                  line = a.split(':')[1]
+                  uid = int(line.split()[0])
+         
+         pstat = open('/proc/' + str(pid) + '/status', 'r')
+         lines = pstat.readlines()
+         for a in lines:
+              if a.startswith('Gid:'):
+                  a = Helper.remove_white(a)
+                  print(a)
+                  line = a.split(':')[1]
+                  gid = int(line.split()[0])
+         
+         return uid,gid
 
 class Guard(Operations):
     def __init__(self):
@@ -52,7 +91,11 @@ class Guard(Operations):
     # Filesystem methods
     # ==================
     def getattr(self, path, fh=None):
+        uid = 0
+        gid = 0
+        mode = (stat.S_IFDIR | 0o755)
         path_parts = []
+        uid, gid, pid = fuse_get_context()
         if '/' == path:
             path_parts = []
         else:
@@ -60,6 +103,7 @@ class Guard(Operations):
             if '/' == path[0]:
                 del path_parts[0]
         ok = False
+        print(path_parts)
         if len(path_parts) == 0:
             ok = True
         else:
@@ -68,8 +112,12 @@ class Guard(Operations):
                ok = False
             if len(path_parts) > 1 and (not path_parts[0] in symlinks or not(path_parts[1] in symlinks[path_parts[0]])):
                ok = False
+        if len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] in symlinks[path_parts[0]]:
+            mode = (stat.S_IFLNK | 0o755)
+        if len(path_parts) > 1:
+            uid, gid = Helper.get_process_rights(int(path_parts[0].split('-')[0]))
         if ok:
-          return {'st_atime': int(time()), 'st_ctime': int(time()), 'st_gid': 0, 'st_mode': (stat.S_IFDIR | 0o755), 'st_mtime': int(time()), 'st_uid': 0}
+          return {'st_atime': int(time()), 'st_ctime': int(time()), 'st_gid': gid, 'st_mode': mode, 'st_mtime': int(time()), 'st_uid': uid}
         else:
           raise FuseOSError(ENOENT)
 
@@ -81,9 +129,10 @@ class Guard(Operations):
             path_parts = path.split('/')
             if '/' == path[0]:
                 del path_parts[0]
-        
+        print(path_parts[0])
+        print(symlinks[path_parts[0]])
         if len(path_parts) > 1:
-            return symlink[path_parts[0]]['app']
+            return symlinks[path_parts[0]]['app']
     
     def readdir(self, path, fh):
         path_parts = []
@@ -103,12 +152,32 @@ class Guard(Operations):
                output.extend(symlinks[path_parts[0]].keys())
            elif not( path_parts[0] in Helper.return_main_entries()):
                raise FuseOSError(ENOENT)
+        print(symlinks)
         output.extend(dirents)
         return output
 
     def symlink(self, name, target):
+        path = name
         uid, gid, pid = fuse_get_context()
-        symlinks[str(pid) + '-' + str(os.stat('/proc/' + str(pid)).st_ctime)] = { 'app': target }
+        process_name = str(pid) + '-' + Helper.get_creation_time(pid)
+        path_parts = []
+        print("process_name")
+        print(process_name)
+        if '/' == path:
+            path_parts = []
+        else:
+            path_parts = path.split('/')
+            if '/' == path[0]:
+                del path_parts[0]
+        if len(path_parts) < 2:
+            print("A")
+            raise FuseOSError(EACCES)
+        
+        if process_name != path_parts[0] or "app" != path_parts[1]:
+            print("B")
+            raise FuseOSError(EACCES)
+        
+        symlinks[process_name] = { 'app': target }
     
     access = None
     flush = None
