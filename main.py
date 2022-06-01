@@ -9,6 +9,10 @@ from errno import ENOENT, EACCES
 from fuse import FUSE, FuseOSError, Operations, fuse_get_context
 from time import time
 
+
+# Custom import
+import monitor
+
 symlinks = {}
 
 def for_int(number):
@@ -56,8 +60,7 @@ class Helper:
          for a in lines:
               if a.startswith('Uid:'):
                   a = Helper.remove_white(a)
-                  print(a)
-                  line = a.split(':')[1]
+                                    line = a.split(':')[1]
                   uid = int(line.split()[0])
          
          pstat = open('/proc/' + str(pid) + '/status', 'r')
@@ -65,8 +68,7 @@ class Helper:
          for a in lines:
               if a.startswith('Gid:'):
                   a = Helper.remove_white(a)
-                  print(a)
-                  line = a.split(':')[1]
+                                    line = a.split(':')[1]
                   gid = int(line.split()[0])
          
          return uid,gid
@@ -74,6 +76,12 @@ class Helper:
 class Guard(Operations):
     def __init__(self):
         self.helper = Helper()
+        self.inotify = None
+    
+    def real_init(self):
+        if None == self.inotify:
+            self.inotify = monitor.watcher()
+            self.inotify.start()
     
     def check_rights(self):
       uid, gid, pid = fuse_get_context()
@@ -103,8 +111,7 @@ class Guard(Operations):
             if '/' == path[0]:
                 del path_parts[0]
         ok = False
-        print(path_parts)
-        if len(path_parts) == 0:
+                if len(path_parts) == 0:
             ok = True
         else:
             ok = True
@@ -129,9 +136,9 @@ class Guard(Operations):
             path_parts = path.split('/')
             if '/' == path[0]:
                 del path_parts[0]
-        print(path_parts[0])
-        print(symlinks[path_parts[0]])
-        if len(path_parts) > 1:
+                        if len(path_parts) > 1:
+            self.real_init()
+                        self.inotify.add_path(path)
             return symlinks[path_parts[0]]['app']
     
     def readdir(self, path, fh):
@@ -144,25 +151,26 @@ class Guard(Operations):
                 del path_parts[0]
         dirents = ['.', '..']
         output=[]
-        print(path_parts)
-        if len(path_parts) == 0:
+                if len(path_parts) == 0:
            output.extend(Helper.return_main_entries())
         else:
            if path_parts[0] in symlinks:
                output.extend(symlinks[path_parts[0]].keys())
            elif not( path_parts[0] in Helper.return_main_entries()):
                raise FuseOSError(ENOENT)
-        print(symlinks)
-        output.extend(dirents)
+                output.extend(dirents)
         return output
+    
+    def open(self, path, flags):
+        self.real_init()
+                self.inotify.add_path(path)
+        return os.open(path, flags)
 
     def symlink(self, name, target):
         path = name
         uid, gid, pid = fuse_get_context()
         process_name = str(pid) + '-' + Helper.get_creation_time(pid)
         path_parts = []
-        print("process_name")
-        print(process_name)
         if '/' == path:
             path_parts = []
         else:
@@ -170,11 +178,9 @@ class Guard(Operations):
             if '/' == path[0]:
                 del path_parts[0]
         if len(path_parts) < 2:
-            print("A")
             raise FuseOSError(EACCES)
         
         if process_name != path_parts[0] or "app" != path_parts[1]:
-            print("B")
             raise FuseOSError(EACCES)
         
         symlinks[process_name] = { 'app': target }
