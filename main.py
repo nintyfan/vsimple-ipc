@@ -26,6 +26,7 @@ from time import time
 
 # Custom import
 import monitor
+from helper import Helper
 
 symlinks = {}
 
@@ -38,54 +39,6 @@ def error(callback, params):
     except:
       return (true, None)
 
-class Helper:
-    def return_main_entries():
-        output = []
-        dirents2 = os.listdir('/proc')
-        for r in dirents2:
-          try:
-            output.append(r + '-' + str(Helper.get_creation_time(int(r))))
-          except ValueError:
-            output.append(r)
-        return output
-    def get_creation_time(pid):
-         pstat = open('/proc/' + str(pid) + '/stat', 'r')
-         line = pstat.readlines()[0]
-         return line.split(' ')[23]
-    def remove_white(string):
-        result = ''
-        was_space=False
-        for a in range(0,len(string)-1):
-            if string[a].isspace():
-                if not(was_space):
-                    result += string[a]
-                was_space = True
-            else:
-                was_space = False
-                result += string[a]
-        return result
-                
-    def get_process_rights(pid):
-         uid = None
-         gid = None
-         
-         pstat = open('/proc/' + str(pid) + '/status', 'r')
-         lines = pstat.readlines()
-         for a in lines:
-              if a.startswith('Uid:'):
-                  a = Helper.remove_white(a)
-                                    line = a.split(':')[1]
-                  uid = int(line.split()[0])
-         
-         pstat = open('/proc/' + str(pid) + '/status', 'r')
-         lines = pstat.readlines()
-         for a in lines:
-              if a.startswith('Gid:'):
-                  a = Helper.remove_white(a)
-                                    line = a.split(':')[1]
-                  gid = int(line.split()[0])
-         
-         return uid,gid
 
 class Guard(Operations):
     def __init__(self):
@@ -125,7 +78,7 @@ class Guard(Operations):
             if '/' == path[0]:
                 del path_parts[0]
         ok = False
-                if len(path_parts) == 0:
+        if len(path_parts) == 0:
             ok = True
         else:
             ok = True
@@ -150,10 +103,10 @@ class Guard(Operations):
             path_parts = path.split('/')
             if '/' == path[0]:
                 del path_parts[0]
-                        if len(path_parts) > 1:
+        if len(path_parts) > 1:
             self.real_init()
-                        self.inotify.add_path(path)
-            return symlinks[path_parts[0]]['app']
+            self.inotify.add_path(path)
+        return symlinks[path_parts[0]]['app']
     
     def readdir(self, path, fh):
         path_parts = []
@@ -165,19 +118,19 @@ class Guard(Operations):
                 del path_parts[0]
         dirents = ['.', '..']
         output=[]
-                if len(path_parts) == 0:
-           output.extend(Helper.return_main_entries())
+        if len(path_parts) == 0:
+            output.extend(Helper.return_main_entries())
         else:
            if path_parts[0] in symlinks:
                output.extend(symlinks[path_parts[0]].keys())
            elif not( path_parts[0] in Helper.return_main_entries()):
                raise FuseOSError(ENOENT)
-                output.extend(dirents)
+               output.extend(dirents)
         return output
     
     def open(self, path, flags):
         self.real_init()
-                self.inotify.add_path(path)
+        self.inotify.add_path(path)
         return os.open(path, flags)
 
     def symlink(self, name, target):
