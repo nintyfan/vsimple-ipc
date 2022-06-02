@@ -44,6 +44,7 @@ class Guard(Operations):
     def __init__(self):
         self.helper = Helper()
         self.inotify = None
+        self.real_init()
     
     def real_init(self):
         if None == self.inotify:
@@ -103,9 +104,6 @@ class Guard(Operations):
             path_parts = path.split('/')
             if '/' == path[0]:
                 del path_parts[0]
-        if len(path_parts) > 1:
-            self.real_init()
-            self.inotify.add_path(path)
         return symlinks[path_parts[0]]['app']
     
     def readdir(self, path, fh):
@@ -129,8 +127,6 @@ class Guard(Operations):
         return output
     
     def open(self, path, flags):
-        self.real_init()
-        self.inotify.add_path(path)
         return os.open(path, flags)
 
     def symlink(self, name, target):
