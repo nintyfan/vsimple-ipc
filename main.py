@@ -111,7 +111,7 @@ class Guard(Operations):
             if '/' == path[0]:
                 del path_parts[0]
         ok = False
-                if len(path_parts) == 0:
+        if len(path_parts) == 0:
             ok = True
         else:
             ok = True
@@ -119,8 +119,15 @@ class Guard(Operations):
                ok = False
             if len(path_parts) > 1 and (not path_parts[0] in symlinks or not(path_parts[1] in symlinks[path_parts[0]])):
                ok = False
-        if len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] in symlinks[path_parts[0]]:
+        if len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] == 'status':
+            # read from DIR -> File classes
+            status = symlinks[path_parts[0]]['status']
+            item = status.getFile(path_parts[2])
+            mode = (stat.S_IFDIR | item.getRights())
+        elif len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] in symlinks[path_parts[0]]:
             mode = (stat.S_IFLNK | 0o755)
+        
+        # Obaining UID and GID
         if len(path_parts) > 1:
             uid, gid = Helper.get_process_rights(int(path_parts[0].split('-')[0]))
         if ok:
@@ -151,19 +158,26 @@ class Guard(Operations):
                 del path_parts[0]
         dirents = ['.', '..']
         output=[]
-                if len(path_parts) == 0:
+        if len(path_parts) == 0:
            output.extend(Helper.return_main_entries())
         else:
            if path_parts[0] in symlinks:
-               output.extend(symlinks[path_parts[0]].keys())
+               if len(path_parts) > 1 and path_parts[1] == 'status':
+                   status = symlinks[path_parts[0]]['status']
+                   i = 1
+                   for a in range(1, len(path_parts) - 1):
+                       status = status.getFile(path_parts[i])
+                    output.extend(status.keys())
+               else:
+                   output.extend(symlinks[path_parts[0]].keys())
            elif not( path_parts[0] in Helper.return_main_entries()):
                raise FuseOSError(ENOENT)
-                output.extend(dirents)
+        output.extend(dirents)
         return output
     
     def open(self, path, flags):
         self.real_init()
-                self.inotify.add_path(path)
+        self.inotify.add_path(path)
         return os.open(path, flags)
 
     def symlink(self, name, target):
