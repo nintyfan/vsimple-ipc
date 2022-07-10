@@ -119,11 +119,27 @@ class Guard(Operations):
                ok = False
             if len(path_parts) > 1 and (not path_parts[0] in symlinks or not(path_parts[1] in symlinks[path_parts[0]])):
                ok = False
-        if len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] == 'status':
+        if len(path_parts) > 1 and path_parts[1] == 'status':
             # read from DIR -> File classes
+            if not path_parts[0] in symlinks:
+                raise FuseOSError(ENOENT)
             status = symlinks[path_parts[0]]['status']
+            if path_parts[0].startsWith(str(pid)):
+                mode = 0o777
+                return
+            mode = (stat.S_IFDIR | status.getRights())
+            uid, gid, pid = fuse_get_context()
+            if len(path_parts) > 2:
+                   i = 0
+                   for item in path_parts:
+                       if item == '..':
+                           i = i - 1
+                           if i < 0:
+                               raise FuseOSError(ENOENT)
+                       else:
+                            i = i + 1
+                   os.getattr('/run/lib/vsimple-ipc/storage/' + path)
             item = status.getFile(path_parts[2])
-            mode = (stat.S_IFDIR | item.getRights())
         elif len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] in symlinks[path_parts[0]]:
             mode = (stat.S_IFLNK | 0o755)
         
@@ -143,9 +159,9 @@ class Guard(Operations):
             path_parts = path.split('/')
             if '/' == path[0]:
                 del path_parts[0]
-                        if len(path_parts) > 1:
-            self.real_init()
-                        self.inotify.add_path(path)
+            if len(path_parts) > 1:
+                self.real_init()
+                self.inotify.add_path(path)
             return symlinks[path_parts[0]]['app']
     
     def readdir(self, path, fh):
@@ -163,21 +179,36 @@ class Guard(Operations):
         else:
            if path_parts[0] in symlinks:
                if len(path_parts) > 1 and path_parts[1] == 'status':
-                   status = symlinks[path_parts[0]]['status']
-                   i = 1
-                   for a in range(1, len(path_parts) - 1):
-                       status = status.getFile(path_parts[i])
-                    output.extend(status.keys())
+                   # Attention! This is insecure
+                   i = 0
+                   for item in path_parts:
+                       if item == '..':
+                           i = i - 1
+                           if i < 0:
+                               raise FuseOSError(ENOENT)
+                       else:
+                            i = i + 1
+                   output.extend(os.listdir('/run/lib/vsimple-ipc/storage/' + path))
                else:
                    output.extend(symlinks[path_parts[0]].keys())
+                   output.extend(['status'])
            elif not( path_parts[0] in Helper.return_main_entries()):
                raise FuseOSError(ENOENT)
         output.extend(dirents)
         return output
     
     def open(self, path, flags):
-        self.real_init()
-        self.inotify.add_path(path)
+        #self.real_init()
+        #self.inotify.add_path(path)
+        path_parts = []
+        if '/' == path:
+            path_parts = []
+        else:
+            path_parts = path.split('/')
+            if '/' == path[0]:
+                del path_parts[0]
+        File.checkRights(symlinks, path_parts, fuse_get_context().pid, flags)
+                   
         return os.open(path, flags)
 
     def symlink(self, name, target):
