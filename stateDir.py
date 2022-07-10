@@ -6,6 +6,17 @@ class File:
     self.unixRights = rights
   def getRights():
     return self.unixRights
+  def checkRights(symlinks, path_parts, pid, mode):
+    if len(path_parts) > 1 and path_parts[1] == 'status':
+      if path_parts[0].startsWith(str(pid)):
+        return True
+      status = symlinks[path_parts[0]]['status']
+      i = 1
+      for a in range(1, len(path_parts) - 1):
+        status = status.getFile(path_parts[i])
+      if status.getRights() & mode == mode:
+        return True
+    return False
 
 class DirFileHelper:
   def concat_path(directory, name):
