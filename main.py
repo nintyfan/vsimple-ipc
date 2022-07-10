@@ -60,7 +60,7 @@ class Helper:
          for a in lines:
               if a.startswith('Uid:'):
                   a = Helper.remove_white(a)
-                                    line = a.split(':')[1]
+                  line = a.split(':')[1]
                   uid = int(line.split()[0])
          
          pstat = open('/proc/' + str(pid) + '/status', 'r')
@@ -68,7 +68,7 @@ class Helper:
          for a in lines:
               if a.startswith('Gid:'):
                   a = Helper.remove_white(a)
-                                    line = a.split(':')[1]
+                  line = a.split(':')[1]
                   gid = int(line.split()[0])
          
          return uid,gid
