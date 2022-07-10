@@ -1,3 +1,4 @@
+import os
 
 class File:
   def __init__(self):
@@ -36,3 +37,4 @@ class Directory:
   def getFile(name):
     return self.files[name]
 
+os/mkdir('/run/lib/vsimple-ipc/storage/')
