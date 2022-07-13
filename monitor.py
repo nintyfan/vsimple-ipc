@@ -12,4 +12,4 @@ class watcher(threading.Thread):
       print(event)
   
   def add_path(self, path):
-    self.iadapter.add_watch('/vsimple-ipc/' + path)
+    self.iadapter.add_watch('/proc/' + path)
