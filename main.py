@@ -12,6 +12,10 @@ from time import time
 
 # Custom import
 import monitor
+import stateDir
+
+Dir = stateDir.Directory
+File = stateDir.File
 
 symlinks = {}
 
@@ -108,8 +112,14 @@ class Guard(Operations):
             path_parts = []
         else:
             path_parts = path.split('/')
-            if '/' == path[0]:
-                del path_parts[0]
+        
+        if len(path_parts) == 0:
+            return
+        if path_parts[0] == '':
+            del path_parts[0]
+        print("A")
+        print(path_parts)
+        print("B")
         ok = False
         if len(path_parts) == 0:
             ok = True
@@ -119,15 +129,19 @@ class Guard(Operations):
                ok = False
             if len(path_parts) > 1 and (not path_parts[0] in symlinks or not(path_parts[1] in symlinks[path_parts[0]])):
                ok = False
-        if len(path_parts) > 1 and path_parts[1] == 'status':
+        if len(path_parts) > 1 and path_parts[1] == 'state':
             # read from DIR -> File classes
             if not path_parts[0] in symlinks:
                 raise FuseOSError(ENOENT)
-            status = symlinks[path_parts[0]]['status']
-            if path_parts[0].startsWith(str(pid)):
-                mode = 0o777
-                return
-            mode = (stat.S_IFDIR | status.getRights())
+            status = symlinks[path_parts[0]]['state']
+            print(status.__class__)
+            if path_parts[0].startswith(str(pid)):
+                mode = (stat.S_IFDIR | 0o755)
+                return {'st_atime': int(time()), 'st_ctime': int(time()), 'st_gid': gid, 'st_mode': mode, 'st_mtime': int(time()), 'st_uid': uid}
+            if status is stateDir.Directory:
+              mode = (stat.S_IFDIR | 0o777)
+            else:
+              mode = (stat.S_IFDIR | status.getRights())
             uid, gid, pid = fuse_get_context()
             if len(path_parts) > 2:
                    i = 0
@@ -138,14 +152,28 @@ class Guard(Operations):
                                raise FuseOSError(ENOENT)
                        else:
                             i = i + 1
-                   os.getattr('/run/lib/vsimple-ipc/storage/' + path)
-            item = status.getFile(path_parts[2])
+                   pid = path_parts[0]
+                   del path_parts[0]
+                   del path_parts[0]
+                   print('0')
+                   print(path_parts)  
+                   print('1')
+                   print(stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts))
+                   stat_ = os.lstat(stateDir.state_dir_path + pid + '/' + '/'.join(path_parts))
+                   return {'st_atime': stat_.st_atime, 'st_ctime': stat_.st_ctime, 'st_gid': gid, 'st_mode': stat_.st_mode, 'st_mtime': stat_.st_mtime, 'st_uid': uid}
+            #item = status.getFile(path_parts[2])
         elif len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] in symlinks[path_parts[0]]:
-            mode = (stat.S_IFLNK | 0o755)
+            if path_parts[1] == 'app':
+              mode = (stat.S_IFLNK | 0o755)
+            elif path_parts[1] == 'state':
+              mode = (stat.S_IFDIR | 0o755)
         
         # Obaining UID and GID
         if len(path_parts) > 1:
-            uid, gid = Helper.get_process_rights(int(path_parts[0].split('-')[0]))
+            try:
+              uid, gid = Helper.get_process_rights(int(path_parts[0].split('-')[0]))
+            except ValueError:
+              pass
         if ok:
           return {'st_atime': int(time()), 'st_ctime': int(time()), 'st_gid': gid, 'st_mode': mode, 'st_mtime': int(time()), 'st_uid': uid}
         else:
@@ -161,7 +189,6 @@ class Guard(Operations):
                 del path_parts[0]
             if len(path_parts) > 1:
                 self.real_init()
-                self.inotify.add_path(path)
             return symlinks[path_parts[0]]['app']
     
     def readdir(self, path, fh):
@@ -170,15 +197,19 @@ class Guard(Operations):
             path_parts = []
         else:
             path_parts = path.split('/')
-            if '/' == path[0]:
-                del path_parts[0]
+        if path_parts[0] == '':
+            del path_parts[0]
         dirents = ['.', '..']
         output=[]
+        print('a')
+        print(path)
+        print(path_parts)
         if len(path_parts) == 0:
            output.extend(Helper.return_main_entries())
         else:
            if path_parts[0] in symlinks:
-               if len(path_parts) > 1 and path_parts[1] == 'status':
+               if len(path_parts) > 1 : print(path_parts[1])
+               if len(path_parts) > 1 and path_parts[1] == 'state':
                    # Attention! This is insecure
                    i = 0
                    for item in path_parts:
@@ -188,10 +219,18 @@ class Guard(Operations):
                                raise FuseOSError(ENOENT)
                        else:
                             i = i + 1
-                   output.extend(os.listdir('/run/lib/vsimple-ipc/storage/' + path))
+                   pid = path_parts[0]
+                   del path_parts[0]
+                   del path_parts[0]
+                   print(path_parts)
+                   print(stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts))
+                   output.extend(os.listdir(stateDir.state_dir_path + '/' + pid + '/'  + '/'.join(path_parts)))
                else:
-                   output.extend(symlinks[path_parts[0]].keys())
-                   output.extend(['status'])
+                   items = list(symlinks[path_parts[0]].keys())
+                   items.remove('meta')
+                   items.remove('state')
+                   output.extend(items)
+                   output.extend(['state'])
            elif not( path_parts[0] in Helper.return_main_entries()):
                raise FuseOSError(ENOENT)
         output.extend(dirents)
@@ -207,9 +246,32 @@ class Guard(Operations):
             path_parts = path.split('/')
             if '/' == path[0]:
                 del path_parts[0]
-        File.checkRights(symlinks, path_parts, fuse_get_context().pid, flags)
+        if File.checkRights(symlinks, path_parts, fuse_get_context()[2], flags):
+            symlinks[path_parts[0]]['meta'].ocount += 1
                    
         return os.open(path, flags)
+    
+    def release(self, path, fh):
+        path_parts = []
+        if '/' == path:
+            path_parts = []
+        else:
+            path_parts = path.split('/')
+            if '/' == path[0]:
+                del path_parts[0]
+        
+        if path_parts[1] == 'state':
+            symlinks[path_parts[0]]['meta'].ocount -=1
+            
+            if symlinks[path_parts[0]]['meta'].ocount == 0:
+                token = path_parts[0].split('-')
+                time = Helper.get_creation_time(int(token[0]))
+                if time != token[1]:
+                    # Delete stateDir
+                    symlinks[path_parts[0]]['state'].delete()
+                #close file
+                os.close(fh)
+        
 
     def symlink(self, name, target):
         path = name
@@ -228,13 +290,12 @@ class Guard(Operations):
         if process_name != path_parts[0] or "app" != path_parts[1]:
             raise FuseOSError(EACCES)
         
-        symlinks[process_name] = { 'app': target }
+        symlinks[process_name] = { 'app': target, 'meta': stateDir.MetaInfo(), 'state': stateDir.Dir(stateDir.state_dir_path + '/' + path_parts[0]) }
     
     access = None
     flush = None
     getxattr = None
     listxattr = None
-    open = None
     opendir = None
     release = None
     releasedir = None

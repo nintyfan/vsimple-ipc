@@ -1,12 +1,15 @@
 import os
 
-class File:
+
+state_dir_path = '/run/lib/vsimple-ipc/storage/'
+
+class Rights:
   def __init__(self):
     self.unixRights = 0o777
-  def setRights(rights):
-    self.unixRights = rights
-  def getRights():
+  def getRights(self):
     return self.unixRights
+  def setRights(self,rights):
+    self.unixRights = rights
   def checkRights(symlinks, path_parts, pid, mode):
     if len(path_parts) > 1 and path_parts[1] == 'status':
       if path_parts[0].startsWith(str(pid)):
@@ -19,15 +22,23 @@ class File:
         return True
     return False
 
+class File(Rights): 
+  def __init__(self):
+    Rights.__init__(self)
+    
 class DirFileHelper:
   def concat_path(directory, name):
     return directory.path + '/' + name
 
-class Directory:
+class Directory(Rights):
   def __init__(self, path):
+    Rights.__init__(self)
     self.path = path
     self.files = {}
-    os.mkdir(path)
+    try:
+      os.mkdir(path)
+    except FileExistsError:
+      pass
   def addFile(name, file_):
     self.files[name] = file_
     open(DirFileHelper.concat_path(self, name), 'w').close()
@@ -36,5 +47,22 @@ class Directory:
     del self.files[name]
   def getFile(name):
     return self.files[name]
+  def delete(self):
+    os.rmdir(self.path)
 
-os/mkdir('/run/lib/vsimple-ipc/storage/')
+Dir = Directory
+
+class MetaInfo:
+  def __init__(self):
+    self.ocount = 0
+
+def init(path):
+  rpath = '/'
+  for a in path.split('/'):
+    try:
+      os.mkdir(rpath)
+    except FileExistsError:
+      pass
+    rpath = rpath + '/' + a
+
+init(state_dir_path)
