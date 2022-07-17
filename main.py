@@ -103,6 +103,7 @@ class Guard(Operations):
     # Filesystem methods
     # ==================
     def getattr(self, path, fh=None):
+        print('Entered getattr')
         uid = 0
         gid = 0
         mode = (stat.S_IFDIR | 0o755)
@@ -134,7 +135,6 @@ class Guard(Operations):
             if not path_parts[0] in symlinks:
                 raise FuseOSError(ENOENT)
             status = symlinks[path_parts[0]]['state']
-            print(status.__class__)
             if path_parts[0].startswith(str(pid)):
                 mode = (stat.S_IFDIR | 0o755)
                 return {'st_atime': int(time()), 'st_ctime': int(time()), 'st_gid': gid, 'st_mode': mode, 'st_mtime': int(time()), 'st_uid': uid}
@@ -192,23 +192,21 @@ class Guard(Operations):
             return symlinks[path_parts[0]]['app']
     
     def readdir(self, path, fh):
+        print('Entered readdir')
         path_parts = []
         if '/' == path:
             path_parts = []
         else:
             path_parts = path.split('/')
-        if path_parts[0] == '':
+        if len(path_parts) > 0 and path_parts[0] == '':
             del path_parts[0]
         dirents = ['.', '..']
         output=[]
-        print('a')
-        print(path)
         print(path_parts)
         if len(path_parts) == 0:
            output.extend(Helper.return_main_entries())
         else:
            if path_parts[0] in symlinks:
-               if len(path_parts) > 1 : print(path_parts[1])
                if len(path_parts) > 1 and path_parts[1] == 'state':
                    # Attention! This is insecure
                    i = 0
@@ -222,8 +220,6 @@ class Guard(Operations):
                    pid = path_parts[0]
                    del path_parts[0]
                    del path_parts[0]
-                   print(path_parts)
-                   print(stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts))
                    output.extend(os.listdir(stateDir.state_dir_path + '/' + pid + '/'  + '/'.join(path_parts)))
                else:
                    items = list(symlinks[path_parts[0]].keys())
