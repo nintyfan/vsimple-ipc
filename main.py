@@ -57,6 +57,15 @@ class Helper:
                 was_space = False
                 result += string[a]
         return result
+    
+    def release_stateDir_if_needed(pid):
+            for a in symlinks.keys():
+                pid_elem, timestamp_elem = a.split('-')
+                
+                if pid_elem == pid:
+                    if symlinks[a]['meta'].ocount == 0:
+                       # Delete stateDir
+                       symlinks[a]['state'].delete()
                 
     def get_process_rights(pid):
          uid = None

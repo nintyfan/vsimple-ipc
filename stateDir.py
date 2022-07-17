@@ -49,6 +49,8 @@ class Directory(Rights):
     return self.files[name]
   def delete(self):
     os.rmdir(self.path)
+  def __str__(self):
+    return self.path.split('/')[-1]
 
 Dir = Directory
 
