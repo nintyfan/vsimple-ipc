@@ -159,7 +159,6 @@ class Guard(Operations):
               mode = (stat.S_IFDIR | 0o777)
             else:
               mode = (stat.S_IFDIR | status.getRights())
-            uid, gid, pid = fuse_get_context()
             if len(path_parts) > 2:
                    i = 0
                    for item in path_parts:
