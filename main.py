@@ -14,6 +14,9 @@ from time import time
 import monitor
 import stateDir
 
+
+openedF = {}
+
 Dir = stateDir.Directory
 File = stateDir.File
 
@@ -114,17 +117,22 @@ class Guard(Operations):
         else:
             path_parts = path.split('/')
         
-        if len(path_parts) == 0:
-            return
-        if path_parts[0] == '':
+        if len(path_parts) != 0 and path_parts[0] == '':
             del path_parts[0]
-        print("A")
-        print(path_parts)
-        print("B")
+            
         ok = False
+        
+        
+        
         if len(path_parts) == 0:
             ok = True
         else:
+            
+            try:
+              uid, gid = Helper.get_process_rights(int(path_parts[0].split('-')[0]))
+            except ValueError:
+              pass
+        
             ok = True
             if not( path_parts[0] in Helper.return_main_entries()):
                ok = False
@@ -155,12 +163,16 @@ class Guard(Operations):
                    pid = path_parts[0]
                    del path_parts[0]
                    del path_parts[0]
-                   print('0')
-                   print(path_parts)  
-                   print('1')
-                   print(stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts))
-                   stat_ = os.lstat(stateDir.state_dir_path + pid + '/' + '/'.join(path_parts))
-                   return {'st_atime': stat_.st_atime, 'st_ctime': stat_.st_ctime, 'st_gid': gid, 'st_mode': stat_.st_mode, 'st_mtime': stat_.st_mtime, 'st_uid': uid}
+                   
+                   rpath = stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts)
+                   
+                   if not os.path.exists(rpath):
+                     raise FuseOSError(ENOENT)
+                   try:
+                     stat_ = os.stat(rpath)
+                   except ENOENT:
+                     raise FuseOSError(ENOENT)
+                   return {'st_atime': stat_.st_atime, 'st_ctime': stat_.st_ctime, 'st_gid': gid, 'st_mode': stat_.st_mode, 'st_mtime': stat_.st_mtime, 'st_uid': uid,   'st_nlink': stat_.st_nlink, 'st_size': stat_.st_size}
             #item = status.getFile(path_parts[2])
         elif len(path_parts) > 1 and path_parts[0] in symlinks and path_parts[1] in symlinks[path_parts[0]]:
             if path_parts[1] == 'app':
@@ -232,20 +244,61 @@ class Guard(Operations):
         output.extend(dirents)
         return output
     
+    def __addFile__(self, path, flags):
+        print('__addFile__')
+        a = list(openedF.keys()).sort()
+        prev = -1
+        curr = 0
+        if a != None:
+          for b  in a:
+            if prev + 1 < b:
+              curr = prev + 1
+              break
+        openedF[curr] = { 'path': path, 'flags': flags }
+        return curr
+    
     def open(self, path, flags):
-        #self.real_init()
-        #self.inotify.add_path(path)
-        path_parts = []
+        ##self.real_init()
+        ##self.inotify.add_path(path)
+        #path_parts = []
+        #if '/' == path:
+        #    path_parts = []
+        #else:
+        #    path_parts = path.split('/')
+        #    if '/' == path[0]:
+        #        del path_parts[0]
+        rpath = path
         if '/' == path:
-            path_parts = []
+                path_parts = []
         else:
-            path_parts = path.split('/')
-            if '/' == path[0]:
+                path_parts = path.split('/')
+        
+        if len(path_parts) != 0 and path_parts[0] == '':
                 del path_parts[0]
+        if len(path_parts) > 1 and path_parts[1] == 'state':
+            if len(path_parts) > 2:
+                       i = 0
+                       for item in path_parts:
+                           if item == '..':
+                               i = i - 1
+                               if i < 0:
+                                   raise FuseOSError(ENOENT)
+                           else:
+                                i = i + 1
+            pid = path_parts[0]
+            del path_parts[0]
+            del path_parts[0]
+            rpath = stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts)
         if File.checkRights(symlinks, path_parts, fuse_get_context()[2], flags):
             symlinks[path_parts[0]]['meta'].ocount += 1
-                   
-        return os.open(path, flags)
+        result =  os.open(rpath, flags)
+        if result == -1:
+            return  -1
+        rresult = self.__addFile__(rpath, flags)
+        os.close(result)
+        print('EXITING FROM OPEN')
+        return rresult
+        
     
     def release(self, path, fh):
         path_parts = []
@@ -266,7 +319,7 @@ class Guard(Operations):
                     # Delete stateDir
                     symlinks[path_parts[0]]['state'].delete()
                 #close file
-                os.close(fh)
+                openedF.remove(fh)
         
 
     def symlink(self, name, target):
@@ -288,6 +341,151 @@ class Guard(Operations):
         
         symlinks[process_name] = { 'app': target, 'meta': stateDir.MetaInfo(), 'state': stateDir.Dir(stateDir.state_dir_path + '/' + path_parts[0]) }
     
+    
+    
+    def create(self, path, mode, fi=None):
+      rpath = path
+      if '/' == path:
+              path_parts = []
+      else:
+              path_parts = path.split('/')
+          
+      if len(path_parts) != 0 and path_parts[0] == '':
+              del path_parts[0]
+              
+      if len(path_parts) > 1 and path_parts[1] == 'state':
+          if len(path_parts) > 2:
+                     i = 0
+                     for item in path_parts:
+                         if item == '..':
+                             i = i - 1
+                             if i < 0:
+                                 raise FuseOSError(ENOENT)
+                         else:
+                              i = i + 1
+          pid = path_parts[0]
+          del path_parts[0]
+          del path_parts[0]
+          
+          rpath = stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts)
+           
+           
+      result =  os.open(rpath, os.O_WRONLY | os.O_CREAT, mode)
+      if result == -1:
+            return  -1
+      rresult = self.__addFile__(path, os.O_WRONLY | os.O_CREAT)
+      os.close(result)
+      return rresult
+  
+    def write(self, path, buf, offset, fh):
+      print('Entered Write')
+      rpath = path
+      if '/' == path:
+              path_parts = []
+      else:
+              path_parts = path.split('/')
+      if len(path_parts) != 0 and path_parts[0] == '':
+              del path_parts[0]
+              
+      if len(path_parts) > 1 and path_parts[1] == 'state':
+          if len(path_parts) > 2:
+                     i = 0
+                     for item in path_parts:
+                         if item == '..':
+                             i = i - 1
+                             if i < 0:
+                                 raise FuseOSError(ENOENT)
+                         else:
+                              i = i + 1
+          pid = path_parts[0]
+          del path_parts[0]
+          del path_parts[0]
+          rpath = stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts)
+      flags = os.O_WRONLY
+      
+      if fh in openedF:
+          flags = openedF[fh]['flags']
+      fi = os.open(rpath, flags)
+      if -1 == fi:
+          raise FuseOSError(ENOENT)
+      os.lseek(fi, offset, os.SEEK_SET)
+      result = os.write(fi, buf)
+      os.close(fi)
+      print ('Exiting write')
+      return result
+      #os.lseek(fh, offset, os.SEEK_SET)
+      #return os.write(fh, buf)
+    def flush(self, path, fh):
+       return os.fsync(fh)
+   
+    def fsync(self, path, fdatasync, fh):
+      return self.flush(path, fh)
+    
+    def read(self, path, length, offset, fh):
+      print('Entering read')
+      rpath = path
+      if '/' == path:
+              path_parts = []
+      else:
+              path_parts = path.split('/')
+          
+      if len(path_parts) != 0 and path_parts[0] == '':
+              del path_parts[0]
+              
+      if len(path_parts) > 1 and path_parts[1] == 'state':
+          if len(path_parts) > 2:
+                     i = 0
+                     for item in path_parts:
+                         if item == '..':
+                             i = i - 1
+                             if i < 0:
+                                 raise FuseOSError(ENOENT)
+                         else:
+                              i = i + 1
+          pid = path_parts[0]
+          del path_parts[0]
+          del path_parts[0]
+          
+          rpath = stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts)
+      flags = os.O_RDONLY
+      
+      if fh in openedF:
+          flags = openedF[fh]['flags']
+      fi = os.open(rpath, flags)
+      os.lseek(fi, offset, os.SEEK_SET)
+      result =  os.read(fi, length)
+      os.close(fi)
+      print('Exiting read')
+      return result
+    def truncate(self, path, length, fh=None):
+      print('Entering truncate')
+      rpath = path
+      if '/' == path:
+              path_parts = []
+      else:
+              path_parts = path.split('/')
+          
+      if len(path_parts) != 0 and path_parts[0] == '':
+              del path_parts[0]
+              
+      if len(path_parts) > 1 and path_parts[1] == 'state':
+          if len(path_parts) > 2:
+                     i = 0
+                     for item in path_parts:
+                         if item == '..':
+                             i = i - 1
+                             if i < 0:
+                                 raise FuseOSError(ENOENT)
+                         else:
+                              i = i + 1
+          pid = path_parts[0]
+          del path_parts[0]
+          del path_parts[0]
+          
+          rpath = stateDir.state_dir_path + '/' + pid + '/' +  '/'.join(path_parts)
+      with open(rpath, 'r+') as f:
+        f.truncate(length)
+      
     access = None
     flush = None
     getxattr = None
